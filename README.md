@@ -7,8 +7,13 @@ is just a point in the shared parameter space (lib/model.ts, lib/build.ts).
 
 Geometry is fully deterministic: all irregularity comes from a seeded
 PRNG, so a design's parameter values (also encoded in the URL hash)
-reproduce it bit-for-bit. The built-in designs in lib/model.ts each
-reproduce one of the reference photographs.
+reproduce it bit-for-bit. The reference photographs live as parameter
+points in lib/references.ts — regression fixtures, not UI presets. The
+only presets the panel offers are glaze pairings and a gloss/satin
+finish; form always comes from the sliders.
+
+Lighting is pure directionals — no ambient or environment light — so
+the steerable key light casts one hard shadow.
 
 The UI shell (viewer stage, controls panel, gestures, shareable URL
 state) comes from parametric-01.iverfinne.no. One-finger drag orbits,

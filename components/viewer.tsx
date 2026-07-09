@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useThree } from "@react-three/fiber"
-import { Environment, Lightformer, OrbitControls } from "@react-three/drei"
+import { OrbitControls } from "@react-three/drei"
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import type { Params } from "@/lib/model"
@@ -86,11 +86,13 @@ export function Viewer({
       <color attach="background" args={[bg]} />
       <fog attach="fog" args={[bg, 14, 34]} />
 
-      <ambientLight intensity={0.35} />
+      {/* pure directional lighting — no ambient, no environment map.
+          One steerable key that casts the single hard shadow, plus two
+          fixed dim fills so unlit faces don't collapse to black. */}
       <directionalLight
         key={shadow}
         position={lightPos}
-        intensity={1.2}
+        intensity={2.1}
         castShadow
         shadow-mapSize={[shadow, shadow]}
         shadow-bias={-0.0002}
@@ -101,7 +103,8 @@ export function Viewer({
         shadow-camera-near={0.5}
         shadow-camera-far={24}
       />
-      <directionalLight position={[-6, 3, -2]} intensity={0.35} />
+      <directionalLight position={[-6, 3, -2]} intensity={0.5} />
+      <directionalLight position={[2, 1.5, 7]} intensity={0.35} />
 
       <Suspense fallback={null}>
         <group position={[0, -0.85, 0]}>
@@ -120,40 +123,6 @@ export function Viewer({
             </mesh>
           )}
         </group>
-        {/* local softbox studio — no remote HDR fetch. The tall window
-            card gives the glaze its long vertical highlight, like the
-            gallery shots. */}
-        <Environment resolution={256} environmentIntensity={1}>
-          <color attach="background" args={["#9a9a9a"]} />
-          <Lightformer
-            form="rect"
-            intensity={3}
-            position={[0, 6, 1]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            scale={[9, 7, 1]}
-          />
-          <Lightformer
-            form="rect"
-            intensity={1.8}
-            position={[-6, 2, 3]}
-            rotation={[0, Math.PI / 2.4, 0]}
-            scale={[2.2, 4.6, 1]}
-          />
-          <Lightformer
-            form="rect"
-            intensity={1.1}
-            position={[6, 1.4, -2.5]}
-            rotation={[0, -Math.PI / 2.2, 0]}
-            scale={[5, 2.6, 1]}
-          />
-          <Lightformer
-            form="rect"
-            intensity={0.7}
-            position={[0, 1, 6]}
-            rotation={[0, Math.PI, 0]}
-            scale={[7, 1.8, 1]}
-          />
-        </Environment>
       </Suspense>
 
       <FitCamera fit={fit} />

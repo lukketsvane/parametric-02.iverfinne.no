@@ -37,15 +37,16 @@ export function Sculpture({
     }
   }, [built, onFit, invalidate])
 
-  // high-gloss slip-cast ceramic: deep clearcoat over a barely rough body
+  // slip-cast ceramic lit by directionals only (no environment map):
+  // gloss sweeps from a deep wet clearcoat down to dry satin
+  const gloss = params.gloss
   const glaze = (hex: string) => (
     <meshPhysicalMaterial
       color={hex}
-      roughness={0.09}
+      roughness={0.09 + (1 - gloss) * 0.5}
       metalness={0}
-      clearcoat={1}
-      clearcoatRoughness={0.04}
-      envMapIntensity={1.15}
+      clearcoat={gloss}
+      clearcoatRoughness={0.04 + (1 - gloss) * 0.3}
     />
   )
 
