@@ -8,7 +8,7 @@ import {
   ChevronUp,
 } from "lucide-react"
 import {
-  DESIGNS,
+  COMBOS,
   GLAZES,
   PARAM_RANGES,
   SECTIONS,
@@ -150,11 +150,11 @@ export function ControlsPanel({
     onChange(next)
   }
 
-  // a design chip is lit only while the params still match it exactly
-  const activeDesign = DESIGNS.find(({ params: d }) =>
-    Object.keys(d).every(
-      (k) => d[k as keyof Params] === params[k as keyof Params],
-    ),
+  // a combo chip is lit while both glazes still match its pairing
+  const activeCombo = COMBOS.find(
+    (c) =>
+      Math.round(params.glazeB) === c.glazeB &&
+      Math.round(params.glazeT) === c.glazeT,
   )?.name
 
   return (
@@ -163,7 +163,7 @@ export function ControlsPanel({
         {/* header row */}
         <div className="flex items-center gap-1.5 p-2.5">
           <span className="pl-2 text-[11px] uppercase tracking-widest text-black/60 dark:text-white/60">
-            {activeDesign ?? "custom"}
+            {activeCombo ?? "custom"}
           </span>
           <span className="px-1 text-[11px] tabular-nums tracking-widest text-black/40 dark:text-white/40">
             {params.seed}
@@ -195,24 +195,49 @@ export function ControlsPanel({
         {/* expandable body */}
         {open && (
           <div className="max-h-[56vh] overflow-y-auto px-4 pb-4">
-            {/* the reference pieces — exact, reproducible points in the space */}
+            {/* glaze pairings — color only, the form never changes */}
             <div className="mb-3 flex flex-wrap gap-1.5">
-              {DESIGNS.map(({ name, params: d }) => (
+              {COMBOS.map(({ name, glazeB, glazeT }) => (
                 <button
                   key={name}
-                  onClick={() => onChange({ ...d })}
-                  className={chipClass(activeDesign === name)}
+                  onClick={() => set({ glazeB, glazeT })}
+                  className={`${chipClass(activeCombo === name)} flex items-center gap-1.5`}
+                  title={`${GLAZES[glazeB].name} body · ${GLAZES[glazeT].name} crown`}
                 >
+                  <span className="flex -space-x-1">
+                    <span
+                      className="h-3 w-3 rounded-full border border-black/20 dark:border-white/25"
+                      style={{ backgroundColor: GLAZES[glazeB].hex }}
+                    />
+                    <span
+                      className="h-3 w-3 rounded-full border border-black/20 dark:border-white/25"
+                      style={{ backgroundColor: GLAZES[glazeT].hex }}
+                    />
+                  </span>
                   {name}
                 </button>
               ))}
-              <button
-                onClick={() => set({ seed: randomSeed() })}
-                className={chipClass(false)}
-                title="New seed, same parameters"
-              >
-                reseed
-              </button>
+            </div>
+
+            {/* material: wet glaze or dry satin */}
+            <div className="mb-1 flex items-center gap-3 py-1.5">
+              <span className="w-20 shrink-0 text-[11px] uppercase tracking-widest text-black dark:text-white">
+                finish
+              </span>
+              <div className="flex flex-1 flex-wrap gap-1.5">
+                <button
+                  onClick={() => set({ gloss: 1 })}
+                  className={chipClass(params.gloss >= 0.7)}
+                >
+                  gloss
+                </button>
+                <button
+                  onClick={() => set({ gloss: 0.15 })}
+                  className={chipClass(params.gloss < 0.7)}
+                >
+                  satin
+                </button>
+              </div>
             </div>
 
             <GlazeRow
@@ -225,6 +250,16 @@ export function ControlsPanel({
               value={params.glazeT}
               onChange={(i) => set({ glazeT: i })}
             />
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                onClick={() => set({ seed: randomSeed() })}
+                className={chipClass(false)}
+                title="New seed, same parameters"
+              >
+                reseed
+              </button>
+            </div>
 
             {isDesktop && (
               <button
