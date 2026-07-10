@@ -42,6 +42,55 @@ type Studs = {
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
+/**
+ * Unit thorn prototype: root radius 1 at y=0, rising to a small rounded
+ * tip at y=1. The flank is slightly concave like a pinched clay spike and
+ * the root flares into a bell that gets smoothed into the wall. Below
+ * y=0 a shallow plug closes the root — there is no flat base cap, which
+ * is what made the old raw cones flash a faceted "crater" whenever a
+ * spike pointed at the camera.
+ */
+function thornProto(detail: number): THREE.BufferGeometry {
+  const TIP = 0.1 // blunted tip radius — glaze can't hold a perfect point
+  const FLARE = 1.22 // root bell radius
+  const STEPS = 10
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.001, -0.12),
+    new THREE.Vector2(0.62, -0.095),
+    new THREE.Vector2(FLARE * 0.99, -0.03),
+  ]
+  const yCap = 1 - TIP
+  for (let i = 0; i <= STEPS; i++) {
+    const u = i / STEPS
+    const flank = TIP + (1 - TIP) * Math.pow(1 - u, 1.35)
+    const bellU = Math.max(0, 1 - u / 0.24)
+    const bell = 1 + (FLARE - 1) * bellU * bellU
+    pts.push(new THREE.Vector2(flank * bell, u * yCap))
+  }
+  for (let i = 1; i <= 5; i++) {
+    const a = (i / 5) * (Math.PI / 2)
+    pts.push(
+      new THREE.Vector2(
+        Math.max(0.001, TIP * Math.cos(a)),
+        yCap + TIP * Math.sin(a),
+      ),
+    )
+  }
+  return new THREE.LatheGeometry(pts, 16 + detail * 8)
+}
+
+/**
+ * How deep to sink a stud root so its flared bell always bites into the
+ * wall: a base offset, plus the lift caused by the stud direction tilting
+ * away from the surface normal, plus the sag of a curved wall falling
+ * away under the root disk.
+ */
+function rootSink(w: number, cosTilt: number, wallR: number): number {
+  const sinTilt = Math.sqrt(Math.max(0, 1 - cosTilt * cosTilt))
+  const sag = (1.22 * w) ** 2 / (2 * Math.max(wallR, 0.08))
+  return w * (0.22 + 1.25 * sinTilt) + sag
+}
+
 /** Lathe profile radius at t ∈ [0,1] (bottom → top). */
 function profileR(t: number, s: Segment): number {
   const footH = s.footH ?? 0
@@ -118,8 +167,7 @@ function studsFor(
   const perRing = Math.round(st.perRing)
   if (rings < 1 || perRing < 1) return null
 
-  const coneProto = new THREE.ConeGeometry(1, 1, 20 + detail * 8, 1)
-  coneProto.translate(0, 0.5, 0) // grow from the surface
+  const coneProto = thornProto(detail)
   const ballProto = new THREE.SphereGeometry(1, 24 + detail * 8, 18 + detail * 6)
 
   const parts: THREE.BufferGeometry[] = []
@@ -173,7 +221,10 @@ function studsFor(
       } else {
         const w = st.size * wob
         const len = st.size * st.aspect * wob
-        pos.addScaledVector(dir, -w * 0.35) // root sunk into the wall
+        // bury the root bell: tilt away from the normal and wall
+        // curvature both lift the rim, so the sink depth covers them
+        const cosTilt = dir.x * cosA * n.nr + dir.y * n.ny + dir.z * sinA * n.nr
+        pos.addScaledVector(dir, -rootSink(w, cosTilt, r))
         scl.set(w, len, w)
         m.compose(pos, q, scl)
         parts.push(coneProto.clone().applyMatrix4(m))
@@ -244,8 +295,11 @@ export function buildSculpture(p: Params, hiDetail: boolean): Built {
   if (apexType > 0) {
     const yA = hasTop ? yTop + p.hT - 0.02 : lift + p.hB - 0.02
     if (apexType === 1) {
-      const spike = new THREE.ConeGeometry(p.apexR * 2, p.apexH, 22 + detail * 10, 1)
-      spike.translate(0, yA + p.apexH / 2 - 0.01, 0)
+      // same lathed thorn as the studs — its root bell melts into the
+      // crown tip instead of leaving a floating cone-base seam
+      const spike = thornProto(detail)
+      spike.scale(p.apexR * 2, p.apexH, p.apexR * 2)
+      spike.translate(0, yA - p.apexR * 0.5, 0)
       crownParts.push(spike)
     } else {
       const ball = new THREE.SphereGeometry(p.apexR, 22 + detail * 10, 16 + detail * 8)
