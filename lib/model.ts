@@ -4,9 +4,9 @@
  * One generative model covers every reference piece: a stack of two
  * bodies of revolution (bottom body + top crown), each defined by a
  * lathe profile (base / belly / top radii, belly height, roundness,
- * optional flared foot) and studded with rings of protrusions — cones
- * that read as spikes, spheres that read as bobbles, or alternating
- * rows of both. Ball feet, an apex ornament (spike or ball) and a
+ * optional flared foot) and studded with rings of protrusions — lathed
+ * thorns that read as spikes, spheres that read as bobbles, or
+ * alternating rows of both. Ball feet, an apex ornament (spike or ball) and a
  * two-glaze ceramic palette complete the space. Every reference photo
  * is a single point in this space; the sliders move between them.
  *
