@@ -1,5 +1,10 @@
 # parametric-02.iverfinne.no
 
+> **Merged into [parametric.iverfinne.no](https://github.com/lukketsvane/parametric.iverfinne.no):**
+> all four parametric studios were combined into one app — this motor
+> lives on there as the «ceramics» and «prints» engines (its shell is the merged app's foundation), selectable from the engine dropdown.
+> This repository stays as an archive of the standalone studio.
+
 A parametric object studio with two disconnected engines, switched by
 the dropdown in the panel (shuffle never crosses engines; each keeps
 its own current design).
