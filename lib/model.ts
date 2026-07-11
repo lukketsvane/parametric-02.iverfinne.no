@@ -304,6 +304,36 @@ export function dailySeed(): number {
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
 }
 
+/**
+ * Rebuild a Params from untrusted input (URL hash, stored shelf), field
+ * by field: every number is clamped into its range, everything else is
+ * ignored. Returns null when the input isn't an object at all.
+ */
+export function clampParams(obj: unknown, base: Params): Params | null {
+  if (!obj || typeof obj !== "object") return null
+  const next = { ...base }
+  for (const k of Object.keys(PARAM_RANGES) as ParamKey[]) {
+    const v = (obj as Record<string, unknown>)[k]
+    if (typeof v === "number" && Number.isFinite(v)) {
+      const r = PARAM_RANGES[k]
+      next[k] = Math.min(r.max, Math.max(r.min, v))
+    }
+  }
+  const seed = (obj as Record<string, unknown>).seed
+  if (typeof seed === "number" && Number.isFinite(seed)) {
+    next.seed = Math.floor(seed)
+  }
+  return next
+}
+
+/** A piece kept on the visitor's shelf: params + a snapshot thumbnail. */
+export type KeptPiece = {
+  id: number
+  name: string
+  thumb: string
+  params: Params
+}
+
 /** Crown parameters + apex ornament, as one coherent choice. */
 type CrownPick = Pick<
   Params,

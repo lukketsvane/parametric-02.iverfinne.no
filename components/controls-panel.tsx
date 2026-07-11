@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import {
+  Bookmark,
   Shuffle,
   SlidersHorizontal,
   ChevronDown,
@@ -16,6 +17,7 @@ import {
   designName,
   randomizeParams,
   randomSeed,
+  type KeptPiece,
   type ParamKey,
   type Params,
 } from "@/lib/model"
@@ -121,14 +123,22 @@ export function ControlsPanel({
   params,
   isDesktop,
   hiDetail,
+  shelf,
   onToggleDetail,
   onChange,
+  onKeep,
+  onLoadKept,
+  onRemoveKept,
 }: {
   params: Params
   isDesktop: boolean
   hiDetail: boolean
+  shelf: KeptPiece[]
   onToggleDetail: () => void
   onChange: (p: Params) => void
+  onKeep: () => void
+  onLoadKept: (k: KeptPiece) => void
+  onRemoveKept: (id: number) => void
 }) {
   // collapsed → half (designs, glazes) → full (every parameter)
   const [mode, setMode] = useState<"collapsed" | "half" | "full">("collapsed")
@@ -174,6 +184,17 @@ export function ControlsPanel({
           <div className="flex-1" />
 
           <button
+            onClick={() => {
+              onKeep()
+              if (mode === "collapsed") setMode("half")
+            }}
+            aria-label="Keep this piece on your shelf"
+            title="Keep this piece on your shelf"
+            className={ICON_BTN}
+          >
+            <Bookmark className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+          <button
             onClick={shuffle}
             aria-label="Randomize design"
             className={ICON_BTN_SOLID}
@@ -197,6 +218,41 @@ export function ControlsPanel({
         {/* expandable body */}
         {open && (
           <div className="max-h-[56vh] overflow-y-auto px-4 pb-4">
+            {/* the shelf — pieces this visitor kept, across visits */}
+            {shelf.length > 0 && (
+              <div className="mb-3">
+                <p className="pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-black/50 dark:text-white/50">
+                  shelf
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {shelf.map((k) => (
+                    <div key={k.id} className="relative shrink-0">
+                      <button
+                        onClick={() => onLoadKept(k)}
+                        title={`${k.name} ${k.params.seed}`}
+                        aria-label={`Bring back ${k.name} ${k.params.seed}`}
+                        className={`block h-16 w-14 overflow-hidden rounded-xl border ${HAIR} transition active:scale-95`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={k.thumb}
+                          alt={k.name}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                      <button
+                        onClick={() => onRemoveKept(k.id)}
+                        aria-label={`Remove ${k.name} from the shelf`}
+                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black text-[10px] leading-none text-white transition active:scale-90 dark:bg-white dark:text-black"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* glaze pairings — color only, the form never changes */}
             <div className="mb-3 flex flex-wrap gap-1.5">
               {COMBOS.map(({ name, glazeB, glazeT }) => (

@@ -1,11 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   DEFAULT_PARAMS,
   NUDGE_PARAMS,
   PARAM_RANGES,
-  type ParamKey,
+  clampParams,
+  designName,
+  type KeptPiece,
   type Params,
 } from "@/lib/model"
 import { Viewer, type LightDir } from "./viewer"
@@ -14,6 +16,10 @@ import type { NudgeAxis } from "./gesture-params"
 
 // pixels of two-finger scroll to sweep a parameter's full range
 const NUDGE_RANGE_PX = 420
+
+// the visitor's kiln shelf, persisted across visits
+const SHELF_KEY = "p02.shelf.v1"
+const SHELF_MAX = 12
 
 // follow the system color scheme only — no in-app toggle
 function useSystemDark() {
@@ -59,27 +65,70 @@ export function Studio() {
       const h = window.location.hash.slice(1)
       if (h.startsWith("p=")) {
         const obj = JSON.parse(decodeURIComponent(h.slice(2)))
-        if (obj && typeof obj === "object") {
-          setParams((prev) => {
-            const next = { ...prev }
-            for (const k of Object.keys(PARAM_RANGES) as ParamKey[]) {
-              const v = (obj as Record<string, unknown>)[k]
-              if (typeof v === "number" && Number.isFinite(v)) {
-                const r = PARAM_RANGES[k]
-                next[k] = Math.min(r.max, Math.max(r.min, v))
-              }
-            }
-            if (typeof obj.seed === "number" && Number.isFinite(obj.seed)) {
-              next.seed = Math.floor(obj.seed)
-            }
-            return next
-          })
-        }
+        setParams((prev) => clampParams(obj, prev) ?? prev)
       }
     } catch {
       // malformed hash — ignore
     }
   }, [])
+
+  // ---- the shelf: pieces the visitor kept, remembered across visits ----
+  const captureRef = useRef<(() => string | null) | null>(null)
+  const [shelf, setShelf] = useState<KeptPiece[]>([])
+  const [shelfReady, setShelfReady] = useState(false)
+
+  // hydrate from storage; stored params are as untrusted as a URL hash
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SHELF_KEY)
+      if (raw) {
+        const list = JSON.parse(raw)
+        if (Array.isArray(list)) {
+          const kept: KeptPiece[] = []
+          for (const it of list.slice(0, SHELF_MAX)) {
+            const p = clampParams(it?.params, DEFAULT_PARAMS)
+            if (
+              p &&
+              typeof it.id === "number" &&
+              typeof it.thumb === "string" &&
+              it.thumb.startsWith("data:image/")
+            ) {
+              kept.push({ id: it.id, name: designName(p), thumb: it.thumb, params: p })
+            }
+          }
+          setShelf(kept)
+        }
+      }
+    } catch {
+      // unreadable shelf — start empty
+    }
+    setShelfReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!shelfReady) return
+    try {
+      window.localStorage.setItem(SHELF_KEY, JSON.stringify(shelf))
+    } catch {
+      // storage full or blocked — the shelf just won't persist
+    }
+  }, [shelf, shelfReady])
+
+  const keep = useCallback(() => {
+    const thumb = captureRef.current?.()
+    if (!thumb) return
+    const sig = JSON.stringify(params)
+    setShelf((prev) => [
+      { id: Date.now(), name: designName(params), thumb, params },
+      ...prev.filter((k) => JSON.stringify(k.params) !== sig),
+    ].slice(0, SHELF_MAX))
+  }, [params])
+
+  const loadKept = useCallback((k: KeptPiece) => setParams(k.params), [])
+  const removeKept = useCallback(
+    (id: number) => setShelf((prev) => prev.filter((k) => k.id !== id)),
+    [],
+  )
 
   // keep the URL shareable: it always encodes the current design exactly
   useEffect(() => {
@@ -131,6 +180,9 @@ export function Studio() {
             light={light}
             onNudge={nudge}
             onLight={nudgeLight}
+            onCaptureReady={(fn) => {
+              captureRef.current = fn
+            }}
           />
         )}
       </div>
@@ -150,8 +202,12 @@ export function Studio() {
         params={params}
         isDesktop={isDesktop}
         hiDetail={hiDetail}
+        shelf={shelf}
         onToggleDetail={() => setHiDetail((d) => !d)}
         onChange={setParams}
+        onKeep={keep}
+        onLoadKept={loadKept}
+        onRemoveKept={removeKept}
       />
     </main>
   )
