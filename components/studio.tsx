@@ -10,7 +10,13 @@ import {
   type KeptPiece,
   type Params,
 } from "@/lib/model"
-import { Viewer, type LightDir } from "./viewer"
+import {
+  PRINT_DEFAULTS,
+  clampPrint,
+  printName,
+  type PrintParams,
+} from "@/lib/print-model"
+import { Viewer, type Engine, type LightDir } from "./viewer"
 import { ControlsPanel } from "./controls-panel"
 import type { NudgeAxis } from "./gesture-params"
 
@@ -48,7 +54,11 @@ function useIsDesktop() {
 }
 
 export function Studio() {
+  // two disconnected engines share the stage: each keeps its own design,
+  // and switching engines never touches the other's state
+  const [engine, setEngine] = useState<Engine>("clay")
   const [params, setParams] = useState<Params>(DEFAULT_PARAMS)
+  const [printParams, setPrintParams] = useState<PrintParams>(PRINT_DEFAULTS)
   const [hiDetail, setHiDetail] = useState(false)
   const [mounted, setMounted] = useState(false)
   // key-light direction, steered by a three-finger drag on the canvas
@@ -58,14 +68,20 @@ export function Studio() {
 
   // avoid SSR of the WebGL canvas; restore a shared design from the URL.
   // The hash is untrusted input — every field is validated and clamped so
-  // no crafted URL can push NaN or hostile values into the model.
+  // no crafted URL can push NaN or hostile values into the model. An
+  // `engine` field routes to the right model; old hashes mean ceramics.
   useEffect(() => {
     setMounted(true)
     try {
       const h = window.location.hash.slice(1)
       if (h.startsWith("p=")) {
         const obj = JSON.parse(decodeURIComponent(h.slice(2)))
-        setParams((prev) => clampParams(obj, prev) ?? prev)
+        if (obj && (obj as Record<string, unknown>).engine === "print") {
+          setPrintParams((prev) => clampPrint(obj, prev) ?? prev)
+          setEngine("print")
+        } else {
+          setParams((prev) => clampParams(obj, prev) ?? prev)
+        }
       }
     } catch {
       // malformed hash — ignore
@@ -77,7 +93,8 @@ export function Studio() {
   const [shelf, setShelf] = useState<KeptPiece[]>([])
   const [shelfReady, setShelfReady] = useState(false)
 
-  // hydrate from storage; stored params are as untrusted as a URL hash
+  // hydrate from storage; stored params are as untrusted as a URL hash.
+  // Entries carry their engine (older shelves predate it: ceramics).
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(SHELF_KEY)
@@ -86,14 +103,24 @@ export function Studio() {
         if (Array.isArray(list)) {
           const kept: KeptPiece[] = []
           for (const it of list.slice(0, SHELF_MAX)) {
-            const p = clampParams(it?.params, DEFAULT_PARAMS)
             if (
-              p &&
-              typeof it.id === "number" &&
-              typeof it.thumb === "string" &&
-              it.thumb.startsWith("data:image/")
+              !it ||
+              typeof it.id !== "number" ||
+              typeof it.thumb !== "string" ||
+              !it.thumb.startsWith("data:image/")
             ) {
-              kept.push({ id: it.id, name: designName(p), thumb: it.thumb, params: p })
+              continue
+            }
+            if (it.engine === "print") {
+              const p = clampPrint(it.params, PRINT_DEFAULTS)
+              if (p) {
+                kept.push({ id: it.id, engine: "print", name: printName(p), thumb: it.thumb, params: p })
+              }
+            } else {
+              const p = clampParams(it.params, DEFAULT_PARAMS)
+              if (p) {
+                kept.push({ id: it.id, engine: "clay", name: designName(p), thumb: it.thumb, params: p })
+              }
             }
           }
           setShelf(kept)
@@ -117,14 +144,23 @@ export function Studio() {
   const keep = useCallback(() => {
     const thumb = captureRef.current?.()
     if (!thumb) return
-    const sig = JSON.stringify(params)
+    const piece: KeptPiece =
+      engine === "print"
+        ? { id: Date.now(), engine, name: printName(printParams), thumb, params: printParams }
+        : { id: Date.now(), engine, name: designName(params), thumb, params }
+    const sig = JSON.stringify(piece.params)
     setShelf((prev) => [
-      { id: Date.now(), name: designName(params), thumb, params },
-      ...prev.filter((k) => JSON.stringify(k.params) !== sig),
+      piece,
+      ...prev.filter((k) => k.engine !== engine || JSON.stringify(k.params) !== sig),
     ].slice(0, SHELF_MAX))
-  }, [params])
+  }, [engine, params, printParams])
 
-  const loadKept = useCallback((k: KeptPiece) => setParams(k.params), [])
+  // a kept piece brings its engine back with it
+  const loadKept = useCallback((k: KeptPiece) => {
+    if (k.engine === "print") setPrintParams(k.params as PrintParams)
+    else setParams(k.params as Params)
+    setEngine(k.engine)
+  }, [])
   const removeKept = useCallback(
     (id: number) => setShelf((prev) => prev.filter((k) => k.id !== id)),
     [],
@@ -132,29 +168,42 @@ export function Studio() {
 
   // keep the URL shareable: it always encodes the current design exactly
   useEffect(() => {
+    const active = engine === "print" ? { engine, ...printParams } : { engine, ...params }
     const id = window.setTimeout(() => {
       window.history.replaceState(
         null,
         "",
-        "#p=" + encodeURIComponent(JSON.stringify(params)),
+        "#p=" + encodeURIComponent(JSON.stringify(active)),
       )
     }, 400)
     return () => window.clearTimeout(id)
-  }, [params])
+  }, [engine, params, printParams])
 
-  // two-finger scroll sweeps whichever parameters the model mapped
-  const nudge = useCallback((axis: NudgeAxis, deltaPx: number) => {
-    const key = NUDGE_PARAMS[axis]
-    if (key === undefined) return
-    setParams((p) => {
-      const r = PARAM_RANGES[key]
-      const v = Math.min(
-        r.max,
-        Math.max(r.min, p[key] + (deltaPx / NUDGE_RANGE_PX) * (r.max - r.min)),
-      )
-      return { ...p, [key]: +v.toFixed(3) }
-    })
-  }, [])
+  // two-finger scroll: sweeps mapped ceramics parameters, or the print
+  // engine's two gesture-only dials (flow reshapes the body, poise the cup)
+  const nudge = useCallback(
+    (axis: NudgeAxis, deltaPx: number) => {
+      if (engine === "print") {
+        const key = axis === "vertical" ? "flow" : "poise"
+        setPrintParams((p) => ({
+          ...p,
+          [key]: +Math.min(1, Math.max(0, p[key] + deltaPx / NUDGE_RANGE_PX)).toFixed(3),
+        }))
+        return
+      }
+      const key = NUDGE_PARAMS[axis]
+      if (key === undefined) return
+      setParams((p) => {
+        const r = PARAM_RANGES[key]
+        const v = Math.min(
+          r.max,
+          Math.max(r.min, p[key] + (deltaPx / NUDGE_RANGE_PX) * (r.max - r.min)),
+        )
+        return { ...p, [key]: +v.toFixed(3) }
+      })
+    },
+    [engine],
+  )
 
   // three-finger drag orbits the key light around the piece — drag right
   // to swing it around, drag up to raise it. The camera stays put.
@@ -173,7 +222,9 @@ export function Studio() {
       <div className="absolute inset-0">
         {mounted && (
           <Viewer
+            engine={engine}
             params={params}
+            printParams={printParams}
             dark={dark}
             hiDetail={detailOn}
             mobile={!isDesktop}
@@ -199,12 +250,16 @@ export function Studio() {
       </header>
 
       <ControlsPanel
+        engine={engine}
         params={params}
+        printParams={printParams}
         isDesktop={isDesktop}
         hiDetail={hiDetail}
         shelf={shelf}
+        onEngineChange={setEngine}
         onToggleDetail={() => setHiDetail((d) => !d)}
         onChange={setParams}
+        onPrintChange={setPrintParams}
         onKeep={keep}
         onLoadKept={loadKept}
         onRemoveKept={removeKept}

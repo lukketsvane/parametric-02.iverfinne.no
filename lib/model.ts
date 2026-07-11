@@ -326,12 +326,14 @@ export function clampParams(obj: unknown, base: Params): Params | null {
   return next
 }
 
-/** A piece kept on the visitor's shelf: params + a snapshot thumbnail. */
+/** A piece kept on the visitor's shelf: params + a snapshot thumbnail.
+ * Each piece remembers which engine made it. */
 export type KeptPiece = {
   id: number
+  engine: "clay" | "print"
   name: string
   thumb: string
-  params: Params
+  params: Params | import("./print-model").PrintParams
 }
 
 /** Crown parameters + apex ornament, as one coherent choice. */
