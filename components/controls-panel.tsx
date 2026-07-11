@@ -12,6 +12,8 @@ import {
   GLAZES,
   PARAM_RANGES,
   SECTIONS,
+  dailySeed,
+  designName,
   randomizeParams,
   randomSeed,
   type ParamKey,
@@ -160,10 +162,10 @@ export function ControlsPanel({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
       <div className={`pointer-events-auto w-full max-w-md rounded-3xl border ${HAIR} bg-white dark:bg-black`}>
-        {/* header row */}
+        {/* header row — every piece introduces itself by name */}
         <div className="flex items-center gap-1.5 p-2.5">
           <span className="pl-2 text-[11px] uppercase tracking-widest text-black/60 dark:text-white/60">
-            {activeCombo ?? "custom"}
+            {designName(params)}
           </span>
           <span className="px-1 text-[11px] tabular-nums tracking-widest text-black/40 dark:text-white/40">
             {params.seed}
@@ -255,9 +257,16 @@ export function ControlsPanel({
               <button
                 onClick={() => set({ seed: randomSeed() })}
                 className={chipClass(false)}
-                title="New seed, same parameters"
+                title="New seed, same parameters — a different throw of this form"
               >
                 reseed
+              </button>
+              <button
+                onClick={() => onChange(randomizeParams(dailySeed()))}
+                className={chipClass(params.seed === dailySeed())}
+                title="Today's firing — everyone gets this same piece today"
+              >
+                today
               </button>
             </div>
 

@@ -12,6 +12,15 @@ points in lib/references.ts — regression fixtures, not UI presets. The
 only presets the panel offers are glaze pairings and a gloss/satin
 finish; form always comes from the sliders.
 
+Each piece is an individual, not a config: the walls carry a seeded
+thrown-clay wobble (amplitude rides the jitter dial, so reseeding is a
+different throw of the same form), the glaze is baked per vertex and
+breaks to pale stoneware over thorn tips, bobble crests and the mouth
+lip, and every design introduces itself by a name drawn from its own
+form — a dome-crowned piece is a bulb or an onion, a roofed one a hut
+or a gnome. The "today" chip fires the piece of the day, the same for
+everyone until midnight.
+
 Lighting is pure directionals — no ambient or environment light — so
 the steerable key light casts one hard shadow.
 

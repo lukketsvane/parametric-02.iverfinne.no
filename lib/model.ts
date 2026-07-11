@@ -264,6 +264,46 @@ const quant = (v: number, r: ParamRange) => {
   return +Math.min(r.max, Math.max(r.min, q)).toFixed(4)
 }
 
+/**
+ * Every piece deserves a name, like the reference pieces have. The word
+ * is drawn from small pools keyed to what the form actually is — the
+ * crown archetype, plus the body's dominant texture when it's extreme —
+ * and the pick is seeded, so a piece keeps its name while its sliders
+ * move within the same family and the URL reproduces name and all.
+ */
+const NAME_POOLS = {
+  flat: ["drum", "stump", "pouf", "keg", "loaf", "puck"],
+  neck: ["flask", "horn", "gourd", "bugle", "ewer", "stem"],
+  dome: ["onion", "bulb", "poppy", "bud", "drop", "lamp"],
+  roof: ["hut", "tent", "shroom", "fir", "pawn", "gnome"],
+  tower: ["tower", "pine", "mast", "turret", "husk", "cob"],
+  spiky: ["burr", "thistle", "quill", "nettle", "bramble"],
+  bobbly: ["berry", "grape", "pearl", "roe", "pebble", "knot"],
+}
+
+export function designName(p: Params): string {
+  let pool: readonly string[]
+  if (p.hT <= 0.03) pool = NAME_POOLS.flat
+  else if (p.rTopT > p.rMaxT * 1.25) pool = NAME_POOLS.neck
+  else if (p.rBaseT < p.rMaxT * 0.5) pool = NAME_POOLS.dome
+  else if (Math.round(p.ringsT) >= 2 && p.hT > 0.25) pool = NAME_POOLS.tower
+  else pool = NAME_POOLS.roof
+  const ringsB = Math.round(p.ringsB)
+  const spiky =
+    ringsB * Math.round(p.perRingB) >= 60 && p.aspectB >= 3 && p.shapeB <= 0.3
+  const bobbly = p.shapeB >= 0.8 && p.sizeB >= 0.09 && ringsB >= 2
+  if (spiky) pool = pool.concat(NAME_POOLS.spiky)
+  if (bobbly) pool = pool.concat(NAME_POOLS.bobbly)
+  const r = mulberry32((p.seed * 2246822519) >>> 0)()
+  return pool[Math.floor(r * pool.length)]
+}
+
+/** Seed of the day — everyone who visits today fires the same piece. */
+export function dailySeed(): number {
+  const d = new Date()
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
 /** Crown parameters + apex ornament, as one coherent choice. */
 type CrownPick = Pick<
   Params,
