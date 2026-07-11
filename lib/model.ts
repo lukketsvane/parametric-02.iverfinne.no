@@ -264,7 +264,25 @@ const quant = (v: number, r: ParamRange) => {
   return +Math.min(r.max, Math.max(r.min, q)).toFixed(4)
 }
 
-/** A tasteful random point in the space — still fully seed-reproducible. */
+/** Crown parameters + apex ornament, as one coherent choice. */
+type CrownPick = Pick<
+  Params,
+  | "hT" | "rBaseT" | "rMaxT" | "bellyT" | "rTopT" | "roundT"
+  | "ringsT" | "perRingT" | "shapeT" | "sizeT" | "aspectT" | "alignT"
+  | "bandLoT" | "bandHiT" | "apexType" | "apexH" | "apexR"
+>
+
+/**
+ * A tasteful random point in the space — still fully seed-reproducible.
+ *
+ * The body samples freely, but the crown is drawn as one of the
+ * archetypes the reference pieces use — a studded tower, a clean roof
+ * cone with studded eaves, a ballooning dome or head, a trumpet neck,
+ * or no crown at all. Sampling each crown parameter independently kept
+ * producing chimeras (an egg wearing a coronet, a bare pipe with one
+ * ruffle ring); picking the archetype first keeps the junction and the
+ * studding telling a single story.
+ */
 export function randomizeParams(seed: number): Params {
   const rnd = mulberry32(seed * 2654435761)
   const pick = (k: ParamKey, lo = 0, hi = 1) => {
@@ -272,8 +290,11 @@ export function randomizeParams(seed: number): Params {
     const span = r.max - r.min
     return quant(r.min + span * (lo + (hi - lo) * rnd()), r)
   }
-  const p: Params = {
-    seed,
+  // absolute-valued sampling, for parameters that must relate to others
+  const U = (a: number, b: number) => a + (b - a) * rnd()
+  const val = (k: ParamKey, v: number) => quant(v, PARAM_RANGES[k])
+
+  const body = {
     hB: pick("hB", 0.25, 0.85),
     footH: rnd() < 0.25 ? pick("footH", 0.4, 0.9) : 0,
     footR: pick("footR", 0.45, 0.8),
@@ -290,23 +311,118 @@ export function randomizeParams(seed: number): Params {
     alignB: pick("alignB"),
     bandLoB: pick("bandLoB", 0, 0.5),
     bandHiB: pick("bandHiB", 0.6, 1),
-    hT: rnd() < 0.8 ? pick("hT", 0.25, 0.9) : 0,
-    rBaseT: pick("rBaseT", 0.1, 0.7),
-    rMaxT: pick("rMaxT", 0.2, 0.8),
-    bellyT: pick("bellyT", 0.1, 0.9),
-    rTopT: pick("rTopT", 0, 0.5),
-    roundT: pick("roundT", 0.2, 0.85),
-    ringsT: pick("ringsT", 0, 0.8),
-    perRingT: pick("perRingT", 0.1, 0.8),
-    shapeT: rnd() < 0.5 ? (rnd() < 0.6 ? 0 : 1) : pick("shapeT"),
-    sizeT: pick("sizeT", 0.2, 0.8),
-    aspectT: pick("aspectT", 0.15, 0.75),
-    alignT: pick("alignT"),
-    bandLoT: pick("bandLoT", 0, 0.5),
-    bandHiT: pick("bandHiT", 0.5, 1),
-    apexType: pick("apexType"),
-    apexH: pick("apexH", 0.2, 0.8),
-    apexR: pick("apexR", 0.2, 0.8),
+  }
+
+  // studs off, neutral values — used by every quiet (unstudded) crown
+  const quiet = {
+    ringsT: 0, perRingT: 8, shapeT: 0, sizeT: 0.05,
+    aspectT: 2, alignT: 0.5, bandLoT: 0.1, bandHiT: 0.9,
+  }
+  const noApex = { apexType: 0, apexH: 0.2, apexR: 0.06 }
+
+  let crown: CrownPick
+  const arch = rnd()
+  if (arch < 0.14) {
+    // no crown — the body carries the piece (totem, spool)
+    crown = {
+      hT: 0, rBaseT: 0.2, rMaxT: 0.2, bellyT: 0.5, rTopT: 0.15, roundT: 1,
+      ...quiet, ...noApex,
+    }
+  } else if (arch < 0.42) {
+    // tower: a studded drum or cone sized to the body's mouth (durian, bell)
+    const rBase = val("rBaseT", body.rTopB * U(0.85, 1.25))
+    crown = {
+      hT: pick("hT", 0.35, 0.85),
+      rBaseT: rBase,
+      rMaxT: val("rMaxT", rBase * U(0.95, 1.12)),
+      bellyT: val("bellyT", U(0.05, 0.5)),
+      rTopT: val("rTopT", Math.max(0.04, rBase * U(0.3, 0.95))),
+      roundT: val("roundT", U(0.9, 1.5)),
+      ringsT: Math.round(U(2, 6)),
+      perRingT: Math.round(U(5, 16)),
+      shapeT: rnd() < 0.65 ? 0 : rnd() < 0.5 ? 1 : val("shapeT", U(0.2, 0.6)),
+      sizeT: val("sizeT", U(0.035, 0.075)),
+      aspectT: val("aspectT", rnd() < 0.35 ? U(3.2, 5.8) : U(1.6, 3)),
+      alignT: val("alignT", rnd() < 0.5 ? U(0, 0.25) : U(0.6, 1)),
+      bandLoT: val("bandLoT", U(0.05, 0.2)),
+      bandHiT: val("bandHiT", U(0.75, 0.95)),
+      apexType: rnd() < 0.45 ? 1 : 0,
+      apexH: pick("apexH", 0.3, 0.75),
+      apexR: pick("apexR", 0.15, 0.5),
+    }
+  } else if (arch < 0.62) {
+    // roof: a clean cone overhanging the mouth, at most studded at the
+    // eaves (spore, cactus)
+    const rBase = val("rBaseT", body.rTopB * U(1.05, 1.7))
+    const eaves = rnd() >= 0.55
+    crown = {
+      hT: pick("hT", 0.3, 0.7),
+      rBaseT: rBase,
+      rMaxT: val("rMaxT", rBase),
+      bellyT: val("bellyT", U(0.02, 0.08)),
+      rTopT: val("rTopT", U(0.02, 0.05)),
+      roundT: val("roundT", U(0.95, 1.25)),
+      ...(eaves
+        ? {
+            ringsT: Math.round(U(1, 4)),
+            perRingT: Math.round(U(8, 16)),
+            shapeT: 0,
+            sizeT: val("sizeT", U(0.03, 0.06)),
+            aspectT: val("aspectT", U(1.8, 3)),
+            alignT: val("alignT", U(0.6, 1)),
+            bandLoT: val("bandLoT", U(0.02, 0.08)),
+            bandHiT: val("bandHiT", U(0.25, 0.5)),
+          }
+        : quiet),
+      ...noApex,
+    }
+  } else if (arch < 0.86) {
+    // dome: an onion or head ballooning from a narrow waist, often
+    // wearing an apex ornament or one bobble ring (sputnik, doll, bobble)
+    const ringed = rnd() >= 0.6
+    const lo = U(0.42, 0.5)
+    crown = {
+      hT: pick("hT", 0.35, 0.7),
+      rBaseT: val("rBaseT", U(0.04, 0.09)),
+      rMaxT: val("rMaxT", U(0.2, Math.max(0.24, Math.min(0.38, body.rTopB * 1.9)))),
+      bellyT: val("bellyT", U(0.35, 0.6)),
+      rTopT: val("rTopT", U(0.02, 0.045)),
+      roundT: val("roundT", U(2.7, 3.45)),
+      ...(ringed
+        ? {
+            ringsT: 1,
+            perRingT: Math.round(U(3, 9)),
+            shapeT: 1,
+            sizeT: val("sizeT", U(0.09, 0.13)),
+            aspectT: 1,
+            alignT: val("alignT", U(0, 0.35)),
+            bandLoT: val("bandLoT", lo),
+            bandHiT: val("bandHiT", lo + U(0.12, 0.18)),
+          }
+        : quiet),
+      ...(rnd() < 0.65
+        ? rnd() < 0.5
+          ? { apexType: 1, apexH: val("apexH", U(0.3, 0.5)), apexR: val("apexR", U(0.06, 0.09)) }
+          : { apexType: 2, apexH: val("apexH", U(0.08, 0.16)), apexR: val("apexR", U(0.07, 0.12)) }
+        : noApex),
+    }
+  } else {
+    // neck: a narrow trumpet flaring open at the lip (fins, urchin)
+    crown = {
+      hT: pick("hT", 0.25, 0.5),
+      rBaseT: val("rBaseT", U(0.07, 0.12)),
+      rMaxT: val("rMaxT", U(0.08, 0.13)),
+      bellyT: val("bellyT", U(0.2, 0.4)),
+      rTopT: val("rTopT", U(0.18, 0.3)),
+      roundT: val("roundT", U(1.4, 2.2)),
+      ...quiet, ...noApex,
+    }
+  }
+
+  const p: Params = {
+    seed,
+    ...body,
+    ...crown,
     feet: rnd() < 0.35 ? pick("feet", 0.35, 1) : 0,
     feetR: pick("feetR", 0.3, 0.9),
     stagger: rnd() < 0.7 ? 0.5 : pick("stagger"),
@@ -318,7 +434,6 @@ export function randomizeParams(seed: number): Params {
   // keep the silhouette sane: belly is the widest ring of the body
   p.rMaxB = Math.max(p.rMaxB, p.rBaseB + 0.05, p.rTopB + 0.05)
   if (p.bandHiB - p.bandLoB < 0.15) p.bandHiB = quant(p.bandLoB + 0.3, PARAM_RANGES.bandHiB)
-  if (p.bandHiT - p.bandLoT < 0.1) p.bandHiT = quant(p.bandLoT + 0.25, PARAM_RANGES.bandHiT)
   // two glazes that actually differ
   if (p.glazeT === p.glazeB) p.glazeT = (p.glazeB + 3) % GLAZES.length
   return p
