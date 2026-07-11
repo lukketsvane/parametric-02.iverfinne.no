@@ -5,8 +5,12 @@ import { OrbitControls } from "@react-three/drei"
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import type { Params } from "@/lib/model"
+import type { PrintParams } from "@/lib/print-model"
 import { Sculpture } from "./sculpture"
+import { PrintSculpture } from "./print-sculpture"
 import { GestureParams, type NudgeAxis } from "./gesture-params"
+
+export type Engine = "clay" | "print"
 
 /**
  * Frame the piece whenever its size changes meaningfully: tall or wide
@@ -92,7 +96,9 @@ function CaptureBridge({
 }
 
 export function Viewer({
+  engine,
   params,
+  printParams,
   dark,
   hiDetail,
   mobile,
@@ -101,7 +107,9 @@ export function Viewer({
   onLight,
   onCaptureReady,
 }: {
+  engine: Engine
   params: Params
+  printParams: PrintParams
   dark: boolean
   hiDetail: boolean
   mobile: boolean
@@ -154,11 +162,19 @@ export function Viewer({
 
       <Suspense fallback={null}>
         <group position={[0, -0.85, 0]}>
-          <Sculpture
-            params={params}
-            hiDetail={hiDetail}
-            onFit={(r, cy) => setFit({ r, cy })}
-          />
+          {engine === "print" ? (
+            <PrintSculpture
+              params={printParams}
+              hiDetail={hiDetail}
+              onFit={(r, cy) => setFit({ r, cy })}
+            />
+          ) : (
+            <Sculpture
+              params={params}
+              hiDetail={hiDetail}
+              onFit={(r, cy) => setFit({ r, cy })}
+            />
+          )}
           {/* ground: an invisible plane that only receives the hard cast
               shadow — light mode only, dark mode floats the piece in the
               void. No soft contact blob: one light, one shadow. */}

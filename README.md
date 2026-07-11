@@ -1,9 +1,22 @@
 # parametric-02.iverfinne.no
 
-A parametric ceramics studio. One generative model — a stack of two lathe
-bodies studded with rings of spikes and bobbles, plus ball feet, apex
-ornaments and a glaze palette — covers every reference piece; each design
-is just a point in the shared parameter space (lib/model.ts, lib/build.ts).
+A parametric object studio with two disconnected engines, switched by
+the dropdown in the panel (shuffle never crosses engines; each keeps
+its own current design).
+
+**Ceramics** — one generative model: a stack of two lathe bodies
+studded with rings of spikes and bobbles, plus ball feet, apex
+ornaments and a glaze palette — covers every reference piece; each
+design is just a point in the shared parameter space (lib/model.ts,
+lib/build.ts).
+
+**Prints** — 3D-printed vases (lib/print-model.ts, lib/print-build.ts):
+ribbed shells with lobed clover cross-sections, goblet / trumpet /
+petal / turbine / bell cups, pill and knurl reliefs, candy filaments
+with vertical fades. Its parameter space is a handful of discrete
+traits — the panel shows them as tappable glyph and word chips, no
+sliders at all — plus two gesture-only dials (two-finger scroll
+reshapes body and cup).
 
 Geometry is fully deterministic: all irregularity comes from a seeded
 PRNG, so a design's parameter values (also encoded in the URL hash)
