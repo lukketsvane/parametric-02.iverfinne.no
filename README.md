@@ -19,7 +19,9 @@ breaks to pale stoneware over thorn tips, bobble crests and the mouth
 lip, and every design introduces itself by a name drawn from its own
 form — a dome-crowned piece is a bulb or an onion, a roofed one a hut
 or a gnome. The "today" chip fires the piece of the day, the same for
-everyone until midnight.
+everyone until midnight. Pieces you keep go on your shelf — a snapshot
+thumbnail plus exact parameters in localStorage, so your collection is
+waiting when you come back.
 
 Lighting is pure directionals — no ambient or environment light — so
 the steerable key light casts one hard shadow.
