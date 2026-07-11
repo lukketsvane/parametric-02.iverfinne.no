@@ -1,6 +1,9 @@
 import * as THREE from "three"
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js"
-import { mulberry32, type Params } from "./model"
+import {
+  mergeGeometries,
+  mergeVertices,
+} from "three/addons/utils/BufferGeometryUtils.js"
+import { glazeHex, mulberry32, type Params } from "./model"
 
 /**
  * Deterministic geometry for the whole sculpture. Same params in, same
@@ -42,6 +45,57 @@ type Studs = {
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
+const smooth = (a: number, b: number, x: number) => {
+  const u = clamp01((x - a) / (b - a))
+  return u * u * (3 - 2 * u)
+}
+
+/**
+ * Radius multiplier that makes a lathe read as thrown, not turned: two
+ * low radial modes whose phase drifts slowly with height, like a wall
+ * pulled up by hand. Amplitude rides the jitter dial, so the same
+ * design reseeded is a different throw of the same form.
+ */
+type Wobble = (a: number, t: number) => number
+
+function makeWobble(rnd: () => number, jitter: number): Wobble {
+  const p1 = rnd() * Math.PI * 2
+  const p2 = rnd() * Math.PI * 2
+  const drift = (rnd() - 0.5) * 2.6
+  const amp = jitter * 0.08
+  return (a, t) =>
+    1 +
+    amp *
+      (0.62 * Math.sin(2 * a + p1 + t * drift) +
+        0.38 * Math.sin(3 * a + p2 - t * drift * 1.7))
+}
+
+/** Pale stoneware showing where glaze pulls thin over sharp relief. */
+const BREAK_TONE = new THREE.Color("#e6dbc9")
+
+/**
+ * Bake per-vertex glaze into a geometry: full glaze everywhere except
+ * where `edge` says the glaze breaks (0 = pooled, 1 = thinned to the
+ * break tone). Coordinates arrive in the geometry's local space.
+ */
+function bakeGlaze(
+  g: THREE.BufferGeometry,
+  glaze: THREE.Color,
+  breakC: THREE.Color,
+  edge: (x: number, y: number, z: number) => number,
+) {
+  const pos = g.getAttribute("position")
+  const col = new Float32Array(pos.count * 3)
+  const c = new THREE.Color()
+  for (let i = 0; i < pos.count; i++) {
+    c.copy(glaze).lerp(breakC, clamp01(edge(pos.getX(i), pos.getY(i), pos.getZ(i))))
+    col[i * 3] = c.r
+    col[i * 3 + 1] = c.g
+    col[i * 3 + 2] = c.b
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3))
+}
+
 /**
  * Unit thorn prototype: root radius 1 at y=0, rising to a small rounded
  * tip at y=1. The flank is slightly concave like a pinched clay spike and
@@ -76,7 +130,9 @@ function thornProto(detail: number): THREE.BufferGeometry {
       ),
     )
   }
-  return new THREE.LatheGeometry(pts, 16 + detail * 8)
+  const g = new THREE.LatheGeometry(pts, 16 + detail * 8)
+  g.deleteAttribute("uv") // nothing is textured; keeps merges compatible
+  return g
 }
 
 /**
@@ -131,7 +187,14 @@ function profileN(t: number, s: Segment): { nr: number; ny: number } {
   return { nr: s.h / len, ny: -dr / len }
 }
 
-function latheFor(s: Segment, y0: number, radial: number): THREE.BufferGeometry {
+function latheFor(
+  s: Segment,
+  y0: number,
+  radial: number,
+  wob: Wobble,
+  glaze: THREE.Color,
+  breakC: THREE.Color,
+): THREE.BufferGeometry {
   const N = 56
   const pts: THREE.Vector2[] = [new THREE.Vector2(0.001, 0)]
   for (let i = 0; i <= N; i++) {
@@ -148,7 +211,26 @@ function latheFor(s: Segment, y0: number, radial: number): THREE.BufferGeometry 
   } else {
     pts.push(new THREE.Vector2(0.001, s.h))
   }
-  const g = new THREE.LatheGeometry(pts, radial)
+  const lathe = new THREE.LatheGeometry(pts, radial)
+  // weld the seam (uv is unused) so the wobble displacement and the
+  // recomputed smooth normals don't crease at 0°
+  lathe.deleteAttribute("uv")
+  const g = mergeVertices(lathe)
+  lathe.dispose()
+  const posA = g.getAttribute("position")
+  for (let i = 0; i < posA.count; i++) {
+    const x = posA.getX(i)
+    const y = posA.getY(i)
+    const z = posA.getZ(i)
+    if (Math.hypot(x, z) > 0.004) {
+      const k = wob(Math.atan2(z, x), clamp01(y / s.h))
+      posA.setXYZ(i, x * k, y, z * k)
+    }
+  }
+  g.computeVertexNormals()
+  // glaze thins over the lip: hard on closed nubs, gentler on wide mouths
+  const lip = rTopEdge >= 0.09 ? 0.5 : 0.75
+  bakeGlaze(g, glaze, breakC, (_x, y) => lip * smooth(0.975, 1, y / s.h))
   g.translate(0, y0, 0)
   return g
 }
@@ -162,6 +244,9 @@ function studsFor(
   jitter: number,
   rnd: () => number,
   detail: number,
+  wob: Wobble,
+  glaze: THREE.Color,
+  breakC: THREE.Color,
 ): THREE.BufferGeometry | null {
   const rings = Math.round(st.rings)
   const perRing = Math.round(st.perRing)
@@ -169,6 +254,10 @@ function studsFor(
 
   const coneProto = thornProto(detail)
   const ballProto = new THREE.SphereGeometry(1, 24 + detail * 8, 18 + detail * 6)
+  ballProto.deleteAttribute("uv")
+  // glaze pulls thin toward a thorn's tip and over a bobble's crest
+  bakeGlaze(coneProto, glaze, breakC, (_x, y) => smooth(0.5, 0.96, y))
+  bakeGlaze(ballProto, glaze, breakC, (_x, y) => 0.55 * smooth(0.55, 1, y))
 
   const parts: THREE.BufferGeometry[] = []
   const up = new THREE.Vector3(0, 1, 0)
@@ -183,7 +272,7 @@ function studsFor(
       rings === 1
         ? (st.bandLo + st.bandHi) / 2
         : st.bandLo + ((st.bandHi - st.bandLo) * i) / (rings - 1)
-    const r = profileR(t, s)
+    const rProfile = profileR(t, s)
     const y = y0 + t * s.h
     const n = profileN(t, s)
     const phase = ((i % 2) * stagger * Math.PI * 2) / perRing
@@ -199,9 +288,11 @@ function studsFor(
               ? (i + j) % 2 === 1
               : i % 2 === 1
       const a = (j / perRing) * Math.PI * 2 + phase + (rnd() - 0.5) * 0.14 * jitter
-      const wob = 1 + (rnd() - 0.5) * 2 * 0.5 * jitter
+      const grow = 1 + (rnd() - 0.5) * 2 * 0.5 * jitter
       const cosA = Math.cos(a)
       const sinA = Math.sin(a)
+      // seat the stud on the thrown (wobbled) wall, not the ideal lathe
+      const r = rProfile * wob(a, t)
       // blend between horizontal-out and the true surface normal
       dir
         .set(
@@ -213,14 +304,14 @@ function studsFor(
       pos.set(cosA * r, y, sinA * r)
       q.setFromUnitVectors(up, dir)
       if (ball) {
-        const rad = st.size * 1.1 * wob
+        const rad = st.size * 1.1 * grow
         pos.addScaledVector(dir, rad * 0.5)
         scl.setScalar(rad)
         m.compose(pos, q, scl)
         parts.push(ballProto.clone().applyMatrix4(m))
       } else {
-        const w = st.size * wob
-        const len = st.size * st.aspect * wob
+        const w = st.size * grow
+        const len = st.size * st.aspect * grow
         // bury the root bell: tilt away from the normal and wall
         // curvature both lift the rim, so the sink depth covers them
         const cosTilt = dir.x * cosA * n.nr + dir.y * n.ny + dir.z * sinA * n.nr
@@ -264,16 +355,28 @@ export function buildSculpture(p: Params, hiDetail: boolean): Built {
   const feet = Math.round(p.feet)
   const lift = feet > 0 ? p.feetR * 1.2 : 0
 
+  // one glaze + break tone per zone; glossier glaze flows more and
+  // breaks paler over relief, satin stays closer to its own color
+  const glazeB = new THREE.Color(glazeHex(p.glazeB))
+  const glazeT = new THREE.Color(glazeHex(p.glazeT))
+  const breakB = glazeB.clone().lerp(BREAK_TONE, 0.45 + 0.4 * p.gloss)
+  const breakT = glazeT.clone().lerp(BREAK_TONE, 0.45 + 0.4 * p.gloss)
+
   // ---- body: bottom segment + ball feet -------------------------------
-  const bodyParts: THREE.BufferGeometry[] = [latheFor(segB, lift, radial)]
-  const sB = studsFor(segB, studsB, lift, p.stagger, p.jitter, rnd, detail)
+  const wobB = makeWobble(rnd, p.jitter)
+  const bodyParts: THREE.BufferGeometry[] = [
+    latheFor(segB, lift, radial, wobB, glazeB, breakB),
+  ]
+  const sB = studsFor(segB, studsB, lift, p.stagger, p.jitter, rnd, detail, wobB, glazeB, breakB)
   if (sB) bodyParts.push(sB)
   if (feet > 0) {
     const baseR = profileR(0.02, segB)
-    const ringR = Math.max(baseR * 0.62, baseR - p.feetR * 0.6)
     for (let i = 0; i < feet; i++) {
       const a = (i / feet) * Math.PI * 2 + Math.PI / feet
+      const ringR = Math.max(baseR * 0.62, baseR - p.feetR * 0.6) * wobB(a, 0.02)
       const foot = new THREE.SphereGeometry(p.feetR, 18 + detail * 8, 14 + detail * 6)
+      foot.deleteAttribute("uv")
+      bakeGlaze(foot, glazeB, breakB, () => 0)
       foot.translate(Math.cos(a) * ringR, p.feetR, Math.sin(a) * ringR)
       bodyParts.push(foot)
     }
@@ -286,9 +389,10 @@ export function buildSculpture(p: Params, hiDetail: boolean): Built {
   const embed = 0.05
   const yTop = lift + p.hB - embed
   const crownParts: THREE.BufferGeometry[] = []
+  const wobT = makeWobble(rnd, p.jitter)
   if (hasTop) {
-    crownParts.push(latheFor(segT, yTop, radial))
-    const sT = studsFor(segT, studsT, yTop, p.stagger, p.jitter, rnd, detail)
+    crownParts.push(latheFor(segT, yTop, radial, wobT, glazeT, breakT))
+    const sT = studsFor(segT, studsT, yTop, p.stagger, p.jitter, rnd, detail, wobT, glazeT, breakT)
     if (sT) crownParts.push(sT)
   }
   const apexType = Math.round(p.apexType)
@@ -298,11 +402,14 @@ export function buildSculpture(p: Params, hiDetail: boolean): Built {
       // same lathed thorn as the studs — its root bell melts into the
       // crown tip instead of leaving a floating cone-base seam
       const spike = thornProto(detail)
+      bakeGlaze(spike, glazeT, breakT, (_x, y) => smooth(0.5, 0.96, y))
       spike.scale(p.apexR * 2, p.apexH, p.apexR * 2)
       spike.translate(0, yA - p.apexR * 0.5, 0)
       crownParts.push(spike)
     } else {
       const ball = new THREE.SphereGeometry(p.apexR, 22 + detail * 10, 16 + detail * 8)
+      ball.deleteAttribute("uv")
+      bakeGlaze(ball, glazeT, breakT, (_x, y) => 0.5 * smooth(0.55, 1, y / p.apexR))
       ball.translate(0, yA + p.apexR * 0.72, 0)
       crownParts.push(ball)
     }

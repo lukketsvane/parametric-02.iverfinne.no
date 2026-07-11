@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react"
 import { useThree } from "@react-three/fiber"
 import { buildSculpture } from "@/lib/build"
-import { glazeHex, type Params } from "@/lib/model"
+import type { Params } from "@/lib/model"
 
 /**
  * Mounts the deterministic sculpture geometry with its two ceramic
@@ -38,11 +38,13 @@ export function Sculpture({
   }, [built, onFit, invalidate])
 
   // slip-cast ceramic lit by directionals only (no environment map):
-  // gloss sweeps from a deep wet clearcoat down to dry satin
+  // gloss sweeps from a deep wet clearcoat down to dry satin. The color
+  // itself is baked per-vertex by the builder — full glaze pooling in
+  // the field, thinning to pale stoneware over tips, crests and lips.
   const gloss = params.gloss
-  const glaze = (hex: string) => (
+  const glaze = (
     <meshPhysicalMaterial
-      color={hex}
+      vertexColors
       roughness={0.09 + (1 - gloss) * 0.5}
       metalness={0}
       clearcoat={gloss}
@@ -54,12 +56,12 @@ export function Sculpture({
     <group>
       {built.body && (
         <mesh geometry={built.body} castShadow receiveShadow>
-          {glaze(glazeHex(params.glazeB))}
+          {glaze}
         </mesh>
       )}
       {built.crown && (
         <mesh geometry={built.crown} castShadow receiveShadow>
-          {glaze(glazeHex(params.glazeT))}
+          {glaze}
         </mesh>
       )}
     </group>
