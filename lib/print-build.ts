@@ -44,11 +44,26 @@ function sampleProfile(samples: number[], t: number): number {
   )
 }
 
-/** Cross-section lobing: broad lobes with pinched valleys, like the
- * clover prints. Returns a radius offset around 0. */
+/** Cross-section lobing: broad lobes with pinched valleys (clover,
+ * flower), a rounded square (boxy — the pagoda lamp), or deep round
+ * gadroon flutes (melon — the lilac lantern). Radius offset around 0. */
 function lobeOffset(kind: number, a: number): number {
   if (kind <= 0) return 0
   if (kind === 1) return 0.05 * Math.cos(4 * a) // soft
+  if (kind === 4) {
+    // boxy: superellipse cross-section, tamed so the area stays close
+    const k = 4.2
+    const m = Math.pow(
+      Math.pow(Math.abs(Math.cos(a)), k) + Math.pow(Math.abs(Math.sin(a)), k),
+      -1 / k,
+    )
+    return m * 0.94 - 1
+  }
+  if (kind === 5) {
+    // melon: 18 gadroon segments — round bellies, creased valleys
+    const s = Math.abs(Math.sin(9 * a))
+    return 0.055 * (1 - 2 * Math.pow(s, 1.3))
+  }
   const n = kind === 2 ? 4 : 5
   const amp = kind === 2 ? 0.13 : 0.17
   const s = Math.abs(Math.sin((n * a) / 2))
@@ -67,6 +82,7 @@ type ShellOpts = {
   ribN: number
   ribA: number
   wave?: { amp: number; freq: number }
+  twist?: number // radians of helical drift over the full height
   relief?: (a: number, t: number) => number // additive, in units of scale
   color: THREE.Color
   fade?: { to: THREE.Color; f: (t: number) => number }
@@ -75,13 +91,17 @@ type ShellOpts = {
 }
 
 function shellGeo(o: ShellOpts): THREE.BufferGeometry {
+  const tw = o.twist ?? 0
   const radiusAt = (t: number, a: number): number => {
     let R = o.profile(t)
     if (o.wave) {
-      R *= 1 + o.wave.amp * Math.sin(o.wave.freq * t * TAU) * smooth(0, 0.18, t)
+      // with twist the wave crest climbs the wall as a helix
+      const phase = o.wave.freq * t * TAU + (tw > 0 ? a : 0)
+      R *= 1 + o.wave.amp * Math.sin(phase) * smooth(0, 0.18, t)
     }
     const lm = o.lobeMul ? o.lobeMul(t) : 1
-    let r = R * (1 + lobeOffset(o.lobeKind, a) * lm) * (1 + o.ribA * Math.sin(o.ribN * a))
+    const aa = a + tw * t // lobes rotate with height
+    let r = R * (1 + lobeOffset(o.lobeKind, aa) * lm) * (1 + o.ribA * Math.sin(o.ribN * a))
     if (o.relief) r += o.relief(a, t)
     return Math.max(0.003, r * o.scale)
   }
@@ -177,6 +197,7 @@ export function buildPrint(p: PrintParams, hiDetail: boolean): PrintBuilt {
   const form = Math.round(p.form)
   const lobes = Math.round(p.lobes)
   const waves = Math.round(p.waves)
+  const twist = Math.round(p.twist) === 1 ? 2.1 : 0
   const relief = Math.round(p.relief)
   const stature = Math.round(p.stature)
   const boldRibs = Math.round(p.ribs) === 1
@@ -219,6 +240,13 @@ export function buildPrint(p: PrintParams, hiDetail: boolean): PrintBuilt {
     reliefFn = (a, t) => 0.028 * Math.sin(40 * a) * Math.sin(46 * t * Math.PI)
   }
 
+  // a bare body carries the waves itself — big slow bulges, like the
+  // coral worm vase — otherwise the cup wears them
+  const bodyWave =
+    cup === 0 && waves > 0
+      ? { amp: waves === 1 ? 0.07 : 0.125, freq: waves === 1 ? 3.4 : 3 }
+      : undefined
+
   const baseGeo = shellGeo({
     radial,
     rows,
@@ -229,6 +257,8 @@ export function buildPrint(p: PrintParams, hiDetail: boolean): PrintBuilt {
     lobeKind: lobes,
     ribN,
     ribA: relief === 2 ? ribA * 0.2 : ribA,
+    wave: bodyWave,
+    twist,
     relief: reliefFn,
     color: inkB,
     fade:
@@ -243,40 +273,136 @@ export function buildPrint(p: PrintParams, hiDetail: boolean): PrintBuilt {
   let cupGeo: THREE.BufferGeometry | null = null
   if (cup > 0) {
     const poise = 0.8 + 0.5 * clamp01(p.poise)
-    const cupScale = [0, 0.92, 0.98, 0.95, 0.48, 1.42][cup] * baseR * poise
-    const cupH = [0, 1.02, 0.74, 0.64, 0.52, 0.78][cup] * baseH * (0.9 + 0.2 * clamp01(p.poise))
-    const y0 = cup === 5 ? baseH * 0.56 : cup === 4 ? baseH * 0.9 : baseH * 0.9
+    const cupScale = [0, 0.92, 0.98, 0.95, 0.48, 1.42, 1.32, 1.28][cup] * baseR * poise
+    const cupH =
+      [0, 1.02, 0.74, 0.64, 0.52, 0.78, 1.0, 1.05][cup] * baseH * (0.9 + 0.2 * clamp01(p.poise))
+    const y0 =
+      cup === 5 ? baseH * 0.56 : cup === 6 ? baseH * 0.62 : cup === 7 ? baseH * 0.84 : baseH * 0.9
     const wave =
-      waves > 0 && cup !== 4
+      waves > 0 && cup >= 1 && cup <= 3
         ? { amp: waves === 1 ? 0.028 : 0.048, freq: waves === 1 ? 4 : 4.5 }
-        : undefined
+        : cup === 5 && waves > 0
+          ? { amp: waves === 1 ? 0.028 : 0.048, freq: waves === 1 ? 4 : 4.5 }
+          : undefined
     // lobing on cups: goblets melt from a lobed collar to a round rim,
     // petal cups stay deeply lobed to the lip, the rest print round
     const cupLobeKind = cup === 1 ? lobes : cup === 3 ? Math.max(2, lobes) : 0
     const lobeMul =
       cup === 1 ? (t: number) => 1 - smooth(0.18, 0.72, t) : cup === 3 ? () => 1.15 : undefined
 
-    const shell = shellGeo({
-      radial,
-      rows: 96,
-      y0,
-      h: cupH,
-      profile: (t) => sampleProfile(CUP_PROFILES[cup], t),
-      scale: cupScale,
-      lobeKind: cupLobeKind,
-      lobeMul,
-      ribN,
-      ribA,
-      wave,
-      color: inkC,
-      capBottom: false,
-      top: "lip",
-    })
+    const shell =
+      cup === 6 || cup === 7
+        ? null
+        : shellGeo({
+            radial,
+            rows: 96,
+            y0,
+            h: cupH,
+            profile: (t) => sampleProfile(CUP_PROFILES[cup], t),
+            scale: cupScale,
+            lobeKind: cupLobeKind,
+            lobeMul,
+            ribN,
+            ribA,
+            wave,
+            twist,
+            color: inkC,
+            capBottom: false,
+            top: "lip",
+          })
 
-    if (cup === 4) {
+    if (cup === 6) {
+      // pagoda: stacked flaring skirts, each hem open, a short tube on
+      // top — square when the lobes say boxy (the pink lamp), round for
+      // the double-mushroom
+      const tiers = clamp01(p.flow) > 0.62 ? 3 : 2
+      const parts: THREE.BufferGeometry[] = []
+      const skirt = [1.07, 1.1, 1.06, 0.95, 0.79, 0.64, 0.53, 0.48, 0.46, 0.46]
+      const tierH = (cupH / tiers) * 1.12
+      for (let i = 0; i < tiers; i++) {
+        const s = cupScale * (1 - 0.26 * i)
+        parts.push(
+          shellGeo({
+            radial,
+            rows: 64,
+            y0: y0 + i * tierH * 0.92,
+            h: tierH,
+            profile: (t) => sampleProfile(skirt, t),
+            scale: s,
+            lobeKind: lobes === 4 ? 4 : lobes === 5 ? 5 : 0,
+            ribN,
+            ribA,
+            twist,
+            color: inkC,
+            capBottom: false,
+            top: "raw",
+          }),
+        )
+      }
+      // the little open tube crowning the stack
+      parts.push(
+        shellGeo({
+          radial,
+          rows: 24,
+          y0: y0 + tiers * tierH * 0.92,
+          h: tierH * 0.5,
+          profile: () => 0.5,
+          scale: cupScale * (1 - 0.26 * (tiers - 1)),
+          lobeKind: lobes === 4 ? 4 : lobes === 5 ? 5 : 0,
+          ribN,
+          ribA,
+          color: inkC,
+          capBottom: false,
+          top: "lip",
+        }),
+      )
+      cupGeo = mergeGeometries(parts, false)
+      for (const g of parts) g.dispose()
+    } else if (cup === 7) {
+      // lantern: a double-bulge gadrooned belly under a short ribbed
+      // neck with a flat cap, like the lilac lamp
+      const parts: THREE.BufferGeometry[] = []
+      const gourd = [0.5, 0.82, 1.0, 0.97, 0.78, 0.82, 1.04, 1.0, 0.72, 0.48]
+      parts.push(
+        shellGeo({
+          radial,
+          rows: 120,
+          y0,
+          h: cupH * 0.82,
+          profile: (t) => sampleProfile(gourd, t),
+          scale: cupScale,
+          lobeKind: 5, // gadroon flutes are the lantern's whole point
+          lobeMul: () => 1.3,
+          ribN,
+          ribA: ribA * 0.4,
+          twist,
+          color: inkC,
+          capBottom: false,
+          top: "raw",
+        }),
+      )
+      parts.push(
+        shellGeo({
+          radial,
+          rows: 24,
+          y0: y0 + cupH * 0.8,
+          h: cupH * 0.2,
+          profile: () => 1,
+          scale: cupScale * 0.42,
+          lobeKind: 0,
+          ribN,
+          ribA: ribA * 1.6,
+          color: inkC,
+          capBottom: false,
+          top: "dome",
+        }),
+      )
+      cupGeo = mergeGeometries(parts, false)
+      for (const g of parts) g.dispose()
+    } else if (cup === 4) {
       // turbine: thin blades planted through the shoulder around the
       // neck, roots buried in the body like the mint piece
-      const parts: THREE.BufferGeometry[] = [shell]
+      const parts: THREE.BufferGeometry[] = [shell!]
       const nB = 12 + Math.round(4 * clamp01(p.flow))
       const finH = cupH * 1.15
       const rIn = cupScale * 0.72
@@ -302,7 +428,7 @@ export function buildPrint(p: PrintParams, hiDetail: boolean): PrintBuilt {
       cupGeo = mergeGeometries(parts, false)
       for (const g of parts) g.dispose()
     } else {
-      cupGeo = shell
+      cupGeo = shell!
     }
   }
 

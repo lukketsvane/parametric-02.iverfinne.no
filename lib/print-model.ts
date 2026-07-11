@@ -16,7 +16,8 @@ import { mulberry32 } from "./model"
 export type PrintTraitKey =
   | "form" // body silhouette
   | "lobes" // cross-section lobing
-  | "waves" // undulating cup wall
+  | "waves" // undulating wall (on the cup, or the body when bare)
+  | "twist" // helical drift of lobes and waves
   | "relief" // surface decoration on the body
   | "cup" // what sits on top
   | "stature" // overall proportion
@@ -33,10 +34,11 @@ export const PRINT_TRAITS: {
   label: string
   options: string[]
 }[] = [
-  { key: "cup", label: "cup", options: ["none", "goblet", "trumpet", "petal", "turbine", "bell"] },
+  { key: "cup", label: "cup", options: ["none", "goblet", "trumpet", "petal", "turbine", "bell", "pagoda", "lantern"] },
   { key: "form", label: "body", options: ["pill", "bulb", "urn", "column"] },
-  { key: "lobes", label: "lobes", options: ["round", "soft", "clover", "flower"] },
+  { key: "lobes", label: "lobes", options: ["round", "soft", "clover", "flower", "boxy", "melon"] },
   { key: "waves", label: "waves", options: ["calm", "ripple", "squiggle"] },
+  { key: "twist", label: "twist", options: ["straight", "swirl"] },
   { key: "relief", label: "relief", options: ["plain", "pills", "knurl"] },
   { key: "stature", label: "stature", options: ["squat", "classic", "tall"] },
   { key: "ribs", label: "ribs", options: ["fine", "bold"] },
@@ -44,7 +46,7 @@ export const PRINT_TRAITS: {
 ]
 
 const TRAIT_MAX: Record<PrintParamKey, number> = {
-  form: 3, lobes: 3, waves: 2, relief: 2, cup: 5, stature: 2, ribs: 1, fade: 1,
+  form: 3, lobes: 5, waves: 2, twist: 1, relief: 2, cup: 7, stature: 2, ribs: 1, fade: 1,
   inkBase: 7, inkCup: 7, flow: 1, poise: 1,
 }
 
@@ -66,7 +68,7 @@ export const inkHex = (i: number) =>
 /** Homage to the cobalt pill with the pink goblet (IMG_9068). */
 export const PRINT_DEFAULTS: PrintParams = {
   seed: 7,
-  cup: 1, form: 0, lobes: 2, waves: 0, relief: 0, stature: 1, ribs: 0, fade: 0,
+  cup: 1, form: 0, lobes: 2, waves: 0, twist: 0, relief: 0, stature: 1, ribs: 0, fade: 0,
   inkBase: 0, inkCup: 2, flow: 0.5, poise: 0.55,
 }
 
@@ -106,10 +108,11 @@ export function randomizePrint(seed: number): PrintParams {
   if (inkCup === inkBase) inkCup = (inkBase + 3) % INKS.length
   return {
     seed,
-    cup: weighted([8, 26, 20, 18, 14, 14]),
+    cup: weighted([8, 20, 15, 13, 11, 11, 11, 11]),
     form: weighted([28, 26, 24, 22]),
-    lobes: weighted([22, 28, 28, 22]),
+    lobes: weighted([18, 22, 22, 16, 12, 10]),
     waves: weighted([55, 25, 20]),
+    twist: weighted([76, 24]),
     relief: weighted([58, 22, 20]),
     stature: weighted([30, 45, 25]),
     ribs: weighted([70, 30]),
@@ -133,6 +136,8 @@ const PRINT_POOLS: string[][] = [
   ["clover", "daisy", "posy", "frill"], // petal
   ["rotor", "turbine", "cog", "fan"], // turbine
   ["shade", "brolly", "cap", "jelly"], // bell
+  ["pagoda", "step", "stack", "attic"], // pagoda
+  ["lantern", "melon", "plum", "lotus"], // lantern
 ]
 
 export function printName(p: PrintParams): string {
@@ -140,6 +145,7 @@ export function printName(p: PrintParams): string {
   if (Math.round(p.relief) === 1) pool = pool.concat(["candy", "gumdrop"])
   if (Math.round(p.relief) === 2) pool = pool.concat(["knurl", "waffle"])
   if (Math.round(p.waves) === 2) pool = pool.concat(["noodle", "wiggle"])
+  if (Math.round(p.twist) === 1) pool = pool.concat(["twirl", "helix"])
   const r = mulberry32((p.seed * 3266489917) >>> 0)()
   return pool[Math.floor(r * pool.length)]
 }
