@@ -15,6 +15,7 @@ import {
   SECTIONS,
   dailySeed,
   designName,
+  glazeHex,
   randomizeParams,
   randomSeed,
   type KeptPiece,
@@ -114,6 +115,8 @@ const CUP_GLYPHS: ReactNode[] = [
   <svg key="petal" viewBox="0 0 20 20" className="h-5 w-5" {...GLYPH}><path d="M5 7.5 C5 12.5 7 15 10 15 C13 15 15 12.5 15 7.5 M4.6 7.2 a1.8 1.8 0 0 1 3.6 0 M8.2 7.2 a1.8 1.8 0 0 1 3.6 0 M11.8 7.2 a1.8 1.8 0 0 1 3.6 0" /></svg>,
   <svg key="turbine" viewBox="0 0 20 20" className="h-5 w-5" {...GLYPH}><path d="M4.5 16 V7 M8.2 16 V4 M11.8 16 V4 M15.5 16 V7" /></svg>,
   <svg key="bell" viewBox="0 0 20 20" className="h-5 w-5" {...GLYPH}><path d="M7.5 3.5 h5 M12.5 3.5 C15 6 16 9.5 15.5 12.5 H4.5 C4 9.5 5 6 7.5 3.5 M8 12.5 v4 h4 v-4" /></svg>,
+  <svg key="pagoda" viewBox="0 0 20 20" className="h-5 w-5" {...GLYPH}><path d="M8 3.5 h4 v2.5 M5.9 10.5 L7.6 6 h4.8 L14.1 10.5 Z M4 16.5 L6.1 10.5 M16 16.5 L13.9 10.5 M4 16.5 h12" /></svg>,
+  <svg key="lantern" viewBox="0 0 20 20" className="h-5 w-5" {...GLYPH}><path d="M8.5 3.5 h3 M9 3.5 V5 M11 3.5 V5 M10 5 C13.2 5 14.8 6.8 14.8 8.6 C14.8 10 13.8 10.8 12.9 11 C14 11.5 14.6 12.6 14.6 13.6 C14.6 15.4 12.6 16.5 10 16.5 C7.4 16.5 5.4 15.4 5.4 13.6 C5.4 12.6 6 11.5 7.1 11 C6.2 10.8 5.2 10 5.2 8.6 C5.2 6.8 6.8 5 10 5 Z" /></svg>,
 ]
 
 const TRAIT_GLYPHS: Partial<Record<PrintParamKey, ReactNode[]>> = {
@@ -164,6 +167,11 @@ function TraitRow({
   )
 }
 
+// eight representative dots keep the row on one line on a phone; the
+// full 15-glaze palette stays in the model (pairings, shuffle and URLs
+// still reach it) and an off-row active glaze takes the last slot
+const SHOWN_GLAZES = [0, 4, 5, 6, 8, 11, 13, 14]
+
 function GlazeRow({
   label,
   value,
@@ -173,25 +181,29 @@ function GlazeRow({
   value: number
   onChange: (i: number) => void
 }) {
+  const active = Math.round(value)
+  const shown = SHOWN_GLAZES.includes(active)
+    ? SHOWN_GLAZES
+    : [...SHOWN_GLAZES.slice(0, SHOWN_GLAZES.length - 1), active]
   return (
     <div className="flex items-center gap-3 py-1.5">
       <span className="w-20 shrink-0 text-[11px] uppercase tracking-widest text-black dark:text-white">
         {label}
       </span>
-      <div className="flex flex-1 flex-wrap gap-1.5">
-        {GLAZES.map((g, i) => (
+      <div className="flex flex-1 flex-nowrap gap-1.5">
+        {shown.map((i) => (
           <button
-            key={g.name}
+            key={GLAZES[i].name}
             onClick={() => onChange(i)}
-            aria-label={`${label}: ${g.name}`}
-            aria-pressed={i === Math.round(value)}
-            title={g.name}
-            className={`h-6 w-6 rounded-full border transition active:scale-90 ${
-              i === Math.round(value)
+            aria-label={`${label}: ${GLAZES[i].name}`}
+            aria-pressed={i === active}
+            title={GLAZES[i].name}
+            className={`h-6 w-6 shrink-0 rounded-full border transition active:scale-90 ${
+              i === active
                 ? "border-black ring-1 ring-black dark:border-white dark:ring-white"
                 : HAIR
             }`}
-            style={{ backgroundColor: g.hex }}
+            style={{ backgroundColor: GLAZES[i].hex }}
           />
         ))}
       </div>
@@ -442,28 +454,42 @@ export function ControlsPanel({
               </>
             ) : (
               <>
-            {/* glaze pairings — color only, the form never changes */}
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {COMBOS.map(({ name, glazeB, glazeT }) => (
-                <button
-                  key={name}
-                  onClick={() => set({ glazeB, glazeT })}
-                  className={`${chipClass(activeCombo === name)} flex items-center gap-1.5`}
-                  title={`${GLAZES[glazeB].name} body · ${GLAZES[glazeT].name} crown`}
-                >
-                  <span className="flex -space-x-1">
-                    <span
-                      className="h-3 w-3 rounded-full border border-black/20 dark:border-white/25"
-                      style={{ backgroundColor: GLAZES[glazeB].hex }}
-                    />
-                    <span
-                      className="h-3 w-3 rounded-full border border-black/20 dark:border-white/25"
-                      style={{ backgroundColor: GLAZES[glazeT].hex }}
-                    />
-                  </span>
-                  {name}
-                </button>
-              ))}
+            {/* glaze pairing — one compact dropdown instead of a wall of
+                chips; the two dots always show the current pairing */}
+            <div className="flex items-center gap-3 py-1.5">
+              <span className="w-20 shrink-0 text-[11px] uppercase tracking-widest text-black dark:text-white">
+                pairing
+              </span>
+              <span className="flex shrink-0 -space-x-1">
+                <span
+                  className="h-4 w-4 rounded-full border border-black/20 dark:border-white/25"
+                  style={{ backgroundColor: glazeHex(params.glazeB) }}
+                />
+                <span
+                  className="h-4 w-4 rounded-full border border-black/20 dark:border-white/25"
+                  style={{ backgroundColor: glazeHex(params.glazeT) }}
+                />
+              </span>
+              <select
+                value={activeCombo ?? "custom"}
+                onChange={(e) => {
+                  const combo = COMBOS.find((c) => c.name === e.target.value)
+                  if (combo) set({ glazeB: combo.glazeB, glazeT: combo.glazeT })
+                }}
+                aria-label="Glaze pairing"
+                className={`h-8 min-w-0 flex-1 appearance-none rounded-full border ${HAIR} bg-transparent px-3 text-[11px] uppercase tracking-widest text-black outline-none dark:text-white`}
+              >
+                {!activeCombo && (
+                  <option value="custom" disabled>
+                    custom
+                  </option>
+                )}
+                {COMBOS.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* material: wet glaze or dry satin */}
